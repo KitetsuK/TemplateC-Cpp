@@ -1,0 +1,228 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: 'ubuntu-latest'
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['cpp']
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    
+    - name: Install dependencies
+      run: |
+        echo "Set up here your dependencies if needed"
+  
+    - name: Check Makefile
+      id: check_make
+      uses: andstor/file-existence-action@v2
+      with:
+        files: "Makefile"
+  
+    - name: Check Cmake
+      id: check_cmake
+      uses: andstor/file-existence-action@v2
+      with:
+        files: "CMakeLists.txt"
+    
+    - name: Configured project
+      if: steps.check_make.outputs.files_exists == 'false' && steps.check_cmake.outputs.files_exists == 'false'
+      run: exit 84
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v2
+      with:
+        languages: ${{ matrix.language }}
+    - name: Build
+      run: |
+        mkdir build-dir
+        cd build-dir
+        cmake ../
+        make
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v2
+      with:
+        category: "/language:${{matrix.language}}"
+
+  build-epitest:
+    runs-on: ubuntu-latest
+    container:
+      image: epitechcontent/epitest-docker:latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          echo "Set up here your dependencies if needed"
+
+      - name: Check Makefile
+        id: check_make
+        uses: andstor/file-existence-action@v2
+        with:
+          files: "Makefile"
+
+      - name: Check Cmake
+        id: check_cmake
+        uses: andstor/file-existence-action@v2
+        with:
+          files: "CMakeLists.txt"
+      
+      - name: Configured project
+        if: steps.check_make.outputs.files_exists == 'false' && steps.check_cmake.outputs.files_exists == 'false'
+        run: exit 84
+
+      - name: Run build with Makefile
+        if: steps.check_make.outputs.files_exists == 'true'
+        run: make
+      
+      - name: Run build with CMake
+        if: steps.check_cmake.outputs.files_exists == 'true'
+        run: |
+          mkdir build-dir
+          cd build-dir
+          cmake ../
+          make
+
+  build-multiple-env:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          echo "Set up here your dependencies if needed"
+
+      - name: Check Makefile
+        id: check_make
+        uses: andstor/file-existence-action@v2
+        with:
+          files: "Makefile"
+
+      - name: Check Cmake
+        id: check_cmake
+        uses: andstor/file-existence-action@v2
+        with:
+          files: "CMakeLists.txt"
+      
+      - name: Configured project
+        if: steps.check_make.outputs.files_exists == 'false' && steps.check_cmake.outputs.files_exists == 'false'
+        run: exit 84
+
+      - name: Run build with Makefile
+        if: steps.check_make.outputs.files_exists == 'true'
+        run: make
+      
+      - name: Run build with CMake
+        if: steps.check_cmake.outputs.files_exists == 'true'
+        run: |
+          cmake --version
+          mkdir build-dir
+          cd build-dir
+          cmake ../
+          make
+
+  tests-mutliple-env:
+    needs: build-multiple-env
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - criterion: 2.4.2
+          - python: 3.8
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          if [[ "$(echo ${{ matrix.os }})" == "ubuntu-latest" ]]
+          then
+            sudo apt-get install libcriterion-dev
+            sudo apt-get install gcovr
+          else
+            brew install criterion
+            brew install gcovr
+          fi
+
+      - name: Check Makefile
+        id: check_make
+        uses: andstor/file-existence-action@v2
+        with:
+          files: "Makefile"
+      
+      - name: Check Cmake
+        id: check_cmake
+        uses: andstor/file-existence-action@v2
+        with:
+          files: "CMakeLists.txt"
+
+      - name: Run test/s Makefile
+        if: steps.check_make.outputs.files_exists == 'true'
+        run: |
+          make tests_run
+          gcovr --exclude tests
+
+      - name: Run test/s Cmake
+        if: steps.check_cmake.outputs.files_exists == 'true'
+        run: |
+          mkdir build-dir
+          cd build-dir
+          cmake ../
+          make
+          ctest
+          gcovr --exclude tests
+
+  test-epitest:
+    needs: build-epitest
+    runs-on: ubuntu-latest
+    container:
+      image: epitechcontent/epitest-docker:latest
+    steps:
+      - name: Check Makefile
+        id: check_make
+        uses: andstor/file-existence-action@v2
+        with:
+          files: "Makefile"
+
+      - name: Check Cmake
+        id: check_cmake
+        uses: andstor/file-existence-action@v2
+        with:
+          files: "CMakeLists.txt"
+
+      - name: Run test/s Makefile
+        if: steps.check_make.outputs.files_exists == 'true'
+        run: |
+          make tests_run
+          gcovr --exclude tests
+
+      - name: Run test/s Cmake
+        if: steps.check_cmake.outputs.files_exists == 'true'
+        run: |
+          mkdir build-dir
+          cd build-dir
+          cmake ../
+          make
+          ctest
+          gcovr --exclude tests

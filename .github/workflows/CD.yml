@@ -1,0 +1,72 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - "master"
+
+permissions:
+  contents: write
+
+# env:
+  # MIRROR_URL: 
+
+jobs:
+  # push-to-miror:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - uses: actions/checkout@v2
+  #     with:
+  #       fetch-depth: 0
+
+  #   - uses: pixta-dev/repository-mirroring-action@v1
+  #     with:
+  #       target_repo_url:
+  #         ${{ env.MIRROR_URL }}
+  #       ssh_private_key:
+  #         ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+  drop-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          echo "Set up here your dependencies if needed"
+
+      - name: Check Makefile
+        id: check_make
+        uses: andstor/file-existence-action@v2
+        with:
+          files: "Makefile"
+
+      - name: Check Cmake
+        id: check_cmake
+        uses: andstor/file-existence-action@v2
+        with:
+          files: "CMakeLists.txt"
+
+      - name: Configured project
+        if: steps.check_make.outputs.files_exists == 'false' && steps.check_cmake.outputs.files_exists == 'false'
+        run: exit 84
+
+      - name: Run build with Makefile
+        if: steps.check_make.outputs.files_exists == 'true'
+        run: make
+
+      - name: Run build with CMake
+        if: steps.check_cmake.outputs.files_exists == 'true'
+        run: |
+          cmake --version
+          mkdir build-dir
+          cd build-dir
+          cmake ../
+          make
+
+      - name: Project-release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref == 'refs/heads/master' && 'master' || github.ref }}
+          # Put all files needed in release
+          files: |
+            Makefile
